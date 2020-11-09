@@ -1,85 +1,74 @@
 require('dotenv').config();
-
 const 
-    http = require('http'),
-    fs = require('fs'),
-    path = require('path'),
-    handlebars = require('handlebars');
-
-const articles = [
-    {
-        url: 'https://examples.com',
-        title: 'Kröten drehen durch'
-    },
-    {
-        url: 'https://examples.com',
-        title: 'Kayne West zum Präsidenten gewählt'
-    } ,
-    {
-        url: 'https://examples.com',
-        title: 'DAX positiv nach Präsidentenwahl'
-    }
-];
-
-
-const registerPartials = () => {
-    const partials = fs.readdirSync('views/partials');
-    partials.forEach(partial => {
-        let html = fs.readFileSync('views/partials/' + partial, 'utf-8');
-        handlebars.registerPartial(partial.replace('.html', ''), html)
-    });
-};
-
-registerPartials();
-
-const servePage =(res, pageName, data) => {
-    fs.readFile('views/' + pageName, { encoding: 'utf-8'}, (err, html) => {
-        if(err) {
-            console.log(err);
-            res.writeHead(500);
-            res.end();
-        } else {
-            res.writeHead(200);
-            const templateFunction = handlebars.compile(html);    
-            res.end(templateFunction(data || {}));
-        }
-    });
-};
-
-const servePublicFile = (res, url) => {
-    res.writeHead(200);
-    let stream = fs.createReadStream(path.join(__dirname, url));
-    stream.pipe(res);
-}
-
+    express = require('express');
+    expressHandlebars = require('express-handlebars')
+    newsapi = require('newsapi-wrapper');
 const port = process.env.PORT;
-const server = http.createServer((req, res) => {
-    console.log('Requesting ' + req.url);
-    
-    if(req.url.startsWith('/public')) {
-        servePublicFile(res, req.url);
-        return;
-    }
-    
-    switch(req.url) {
-        case '/settings':
-            servePage(res, 'settings.html', {
-                title: 'Settings',
-                heading: 'Settings',
-                settingsActive: true
-            })
-            break;
-        default:
-            servePage(res, 'home.html', {
+
+//express Server aufsetzen
+const server = express();
+
+//server mitteilen, wo die views liegen
+server.set('viewDir', 'views'); 
+
+//eigene kleine Middleware zum loggen der angeforderten URL
+const logURLMiddleware = (req, res, next) => {
+    console.log(req.url);
+    next();
+};
+server.use(logURLMiddleware);
+
+//Middleware, die die statischen Dateien im public Verzeichnis liefert
+server.use(express.static('public'));
+
+//Dateien vom Format .html werden geliefert
+server.engine('html', expressHandlebars({
+    extname: 'html'
+}));
+
+//views haben die Endung .html, müsste sonst in jedem res.render angegeben werden
+server.set('view engine', 'html');
+
+//fetching data from newsAPI
+const renderHome = (req, res) => {
+    let articles = [];
+    let message = '';
+    newsapi
+        .setApiKey(process.env.NEWS_API_KEY)
+        .send()
+        .then(response => {
+            articles = response.articles;           
+        })
+        .catch(err => {
+            message = 'Error when retriving articles from NewsAPI';            
+        })
+        .then(() => {
+            res.render('home', {
                 heading: 'Welcome to the news dashboard!',
-                title: 'Home',                
-                articles: articles,
-                homeActive: true
-            })
-            break;
-    }
+                title: 'News Page',                
+                homeActive: true,
+                articles,
+                message  
+            });
+        });
+    };
     
-});
+//routing
+server.get('/', renderHome);
+server.get('/home', renderHome);
+
+const renderSettings = (req, res) => {
+    res.render('settings', {
+        title: 'Settings',
+        heading: 'Settings',
+        settingsActive: true
+    });
+};
+
+server.get('/settings', renderSettings);
+server.get('/admin', renderSettings);
+
+
 
 server.listen(port, ()=>{
     console.log('Server is listening at port ' + port);

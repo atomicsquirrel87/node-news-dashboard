@@ -29,3 +29,11 @@ nav {
 .nav-link:hover {
     background-color: #5599ff;
 }
+
+.warning {
+    background-color: #ffdd88;
+    color: #cc0000;
+    font-weight: bold;
+    padding: 1em;
+    border: 1px solild #ddbb66
+}
